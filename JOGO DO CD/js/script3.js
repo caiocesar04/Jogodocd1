@@ -1,20 +1,4 @@
-/* Game JS - versão corrigida final:
- * - Adiciona lógica de "Continuar" após vitória e redirecionamento para tela2.html
- * - NOVIDADE: Oponente (Ladrão) que rouba caixas da esquerda para a esquerda.
- * - Adiciona lógica de "Continuar" após vitória e redirecionamento para tela2.html
- * - NOVIDADE: A caixa some imediatamente ao pressionar "Espaço" (início da animação 'pick').
- * - NOVIDADE: A ordem dos frames da animação 'walk' (andando) é revertida.
- * - Corrige bug de "idle pulando" (frames desalinhados)
- * - Mantém personagem centralizado no mesmo ponto em todos os frames
- * - Usa coordenadas inteiras para evitar tremidas
- * - Offset automático aplicado apenas em idle/idleBox
- * - Flip horizontal corrigido (sprites viram corretamente)
- * - NOVIDADE: Lógica para rodar uma Cutscene em vídeo (CUTSCENE1.mp4) antes do redirecionamento com transição (fade).
- * - NOVIDADE: Colisão de entrega restrita à lateral esquerda da caminhonete.
- * - ALTERAÇÃO: Ajuste na função drawPlayer para MUDAR A LARGURA de idle E idleBox SEPARADAMENTE (mantendo o centro).
- * - **CORREÇÃO FINAL:** Largura da caixa (BOX_WIDTH) alterada para 70px e altura (BOX_HEIGHT) mantida em 50px.
- * - **CORREÇÃO FINAL:** Reintrodução da constante DRAW_WIDTHS para controle de largura visual do jogador/ladrão em todos os estados.
- */
+/* Game JS - versão com Soco e Ladrão Atordoado/Sumindo */
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -37,604 +21,764 @@ const FRAME_RATE = 60; // Assumindo 60 FPS (taxa de atualização do requestAnim
 const ROBBER_INTERVAL_SECONDS = 5; // O ladrão tentará roubar a cada 5 segundos
 let robberTimer = 0; // Contador de frames para o ladrão
 
+// NOVO: Configuração para a animação de "sumir" do ladrão
+const STUN_DURATION_FRAMES = FRAME_RATE * 1.5; // Duração total do atordoamento (1.5s)
+const BLINK_INTERVAL_FRAMES = 5; // Pisca a cada 5 frames (3 piscadas em 1.5s)
+
 // --- REINTRODUZIDO: CONSTANTES PARA LARGURAS DE DESENHO (Visual) ---
 const DRAW_WIDTHS = {
-    // Larguras de desenho (Visual) para cada sprite:
-    idle: 50,       
-    idleBox: 100,  
-    walk: 170,     
-    walkBox: 150,  
-    pick: 140,     
-    lost: 140,     
-    lostBox: 180   
+    // Larguras de desenho (Visual) para cada sprite:
+    idle: 50,      
+    idleBox: 100,  
+    walk: 170,     
+    walkBox: 150,  
+    pick: 140,     
+    lost: 140,     
+    lostBox: 180, 
+    // NOVO: Largura do Soco (Ajuste conforme o sprite)
+    punch: 180,
+    // NOVO: Largura de desenho para o ladrão (assumindo que é igual a 'walk' ou um valor customizado)
+    robberWalk: 170,
+    // NOVO: Largura de desenho para o ladrão com caixa (se diferente de 'walkBox' do player)
+    robberWalkBox: 170 
 };
 // ---------------------------------------------------------------------
 
 // Caminhos corrigidos
 const assets = {
-    bg: "../assets/CENÁRIO 1.png",
-    truck: "../assets/caminhonete.png",
-    box: "../assets/caixa.png",
-    player: {
-        idle: "../assets/IDLE.gif",
-        idleBox: "../assets/IDLEBOX.gif",
-        walk: "../assets/WALK.png",
-        walkBox: "../assets/WALKBOX.png",
-        pick: "../assets/PICKBOX.png",
-        lost: "../assets/LOST.png",
-        lostBox: "../assets/LOSTBOX.png",
-    },
+    bg: "../assets/CENÁRIO 1.png",
+    truck: "../assets/caminhonete.png",
+    box: "../assets/caixa.png",
+    // 1. ALTERAÇÃO AQUI: Adicionar o sprite do ladrão com a caixa
+    robberWalk: "../assets/walkladrao.png", 
+    robberWalkBox: "../assets/walkboxladrao.png", // NOVO SPRITE DO LADRÃO COM CAIXA
+    player: {
+        idle: "../assets/IDLE.gif",
+        idleBox: "../assets/IDLEBOX.gif",
+        walk: "../assets/WALK.png",
+        walkBox: "../assets/WALKBOX.png",
+        pick: "../assets/PICKBOX.png",
+        lost: "../assets/LOST.png",
+        lostBox: "../assets/LOSTBOX.png",
+        // punch: "../assets/PUNCH.png", // Comentado, mas mantido a lógica no código
+    },
 };
 
 const images = {};
 let loaded = 0;
-const totalAssets = Object.keys(assets.player).length + 3;
+// 2. ALTERAÇÃO AQUI: Aumentar totalAssets para incluir 'robberWalk' e 'robberWalkBox' (+2)
+const totalAssets = Object.keys(assets.player).length + 3 + 2;
 
-function loadImage(src) {
-    const img = new Image();
-    img.src = src;
-    img.onload = () => {
-        loaded++;
-        if (loaded === totalAssets) startGame();
-    };
-    return img;
+function loadImage(src, key) {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => {
+        loaded++;
+        if (loaded === totalAssets) startGame();
+    };
+    return img;
 }
 
-images.bg = loadImage(assets.bg);
-images.truck = loadImage(assets.truck);
-images.box = loadImage(assets.box);
-for (const key in assets.player) images[key] = loadImage(assets.player[key]);
+images.bg = loadImage(assets.bg, 'bg');
+images.truck = loadImage(assets.truck, 'truck');
+images.box = loadImage(assets.box, 'box');
+// 3. ALTERAÇÃO AQUI: Carregar os novos sprites do ladrão
+images.robberWalk = loadImage(assets.robberWalk, 'robberWalk'); 
+images.robberWalkBox = loadImage(assets.robberWalkBox, 'robberWalkBox'); 
+for (const key in assets.player) images[key] = loadImage(assets.player[key], key);
 
 const player = {
-    x: 100,
-    y: 550,
-    width: 120, // Largura de COLISÃO (Bounding Box)
-    height: 170,
-    speed: 5,
-    hasBox: false,
-    direction: "right",
-    frame: 0,
-    frameDelay: 8,
-    frameCounter: 0,
-    state: "idle",
-    busy: false,
+    x: 100,
+    y: 550,
+    width: 120, // Largura de COLISÃO (Bounding Box)
+    height: 170,
+    speed: 5,
+    hasBox: false,
+    direction: "right",
+    frame: 0,
+    frameDelay: 8,
+    frameCounter: 0,
+    state: "idle",
+    busy: false,
 };
 
 // NOVO: Configuração do Ladrão (Oponente)
 const robber = {
-    x: -150, // Começa FORA da tela (esquerda)
-    y: 550,  // Mesma altura do jogador
-    width: 120, 
-    height: 170,
-    speed: 6, // Um pouco mais rápido que o jogador (5)
-    direction: "right", // Inicialmente entrando
-    state: "idle",      // Será "walk" ao se mover
-    frame: 0,
-    frameDelay: 8,
-    frameCounter: 0,
-    active: false,      // Controla se o ladrão está em sua rotina
-    targetBox: null,    // A caixa que ele tentará roubar
-    hasBox: false,      // Se ele pegou a caixa
+    x: -150, // Começa FORA da tela (esquerda)
+    y: 550,  // Mesma altura do jogador
+    width: 120, 
+    height: 170,
+    speed: 6, // Um pouco mais rápido que o jogador (5)
+    direction: "right", // Inicialmente entrando
+    state: "idle",      // Será "walk" ao se mover
+    frame: 0,
+    frameDelay: 8,
+    frameCounter: 0,
+    active: false,      // Controla se o ladrão está em sua rotina
+    targetBox: null,    // A caixa que ele tentará roubar
+    hasBox: false,      // Se ele pegou a caixa
+    // NOVO: Timer para o estado de atordoamento (stun)
+    stunTimer: 0
 };
 
 
-const frameCounts = { idle: 1, idleBox: 1, walk: 8, walkBox: 8, pick: 4, lost: 4, lostBox: 5 };
+const frameCounts = { 
+    idle: 1, 
+    idleBox: 1, 
+    walk: 8, 
+    walkBox: 8, 
+    pick: 4, 
+    lost: 4, 
+    lostBox: 5,
+    punch: 4,
+    // ATUALIZADO: Conta de frames para os sprites do Ladrão
+    robberWalk: 8,
+    robberWalkBox: 8 // Assumindo 8 frames para o sprite com caixa
+}; 
 
 let boxes = Array.from({ length: GAME.boxCount }, (_, i) => ({
-    x: 120 + (i % 3) * 260,
-    y: 540 + Math.floor(i / 3) * 30,
-    collected: false,
+    x: 120 + (i % 3) * 260,
+    y: 540 + Math.floor(i / 3) * 30,
+    collected: false,
 }));
 const truck = {
-    x: TRUCK_CONFIG.x,
-    y: TRUCK_CONFIG.y,
-    width: TRUCK_CONFIG.width,
-    height: TRUCK_CONFIG.height,
+    x: TRUCK_CONFIG.x,
+    y: TRUCK_CONFIG.y,
+    width: TRUCK_CONFIG.width,
+    height: TRUCK_CONFIG.height,
 };
 
 const keys = {};
 window.addEventListener("keydown", (e) => {
-    if (e.key === " ") e.preventDefault();
-    keys[e.key] = true;
+    if (e.key === " ") e.preventDefault();
+    keys[e.key] = true;
 });
 window.addEventListener("keyup", (e) => {
-    keys[e.key] = false;
+    keys[e.key] = false;
 });
 
 let timeLeft = GAME.timeLimit,
-    score = 0,
-    gameOver = false,
-    // Estado para pausar o jogo durante o vídeo
-    videoPlaying = false,
-    timerInterval;
+    score = 0,
+    gameOver = false,
+    // Estado para pausar o jogo durante o vídeo
+    videoPlaying = false,
+    timerInterval;
 
 // === Lógica de Reprodução e Redirecionamento do Vídeo com Transição ===
 function playCutscene() {
-    if (!fadeTransition || !cutsceneVideo) {
-        console.error("Erro: Elementos de transição ou vídeo não encontrados. Redirecionando...");
-        // Ação de vitória: Redireciona para tela2.html (como estava antes)
-        window.location.href = "tela2.html"; 
-        return;
-    }
+    if (!fadeTransition || !cutsceneVideo) {
+        console.error("Erro: Elementos de transição ou vídeo não encontrados. Redirecionando...");
+        // Ação de vitória: Redireciona para tela2.html (como estava antes)
+        window.location.href = "tela2.html"; 
+        return;
+    }
 
-    // 1. Oculta o overlay de texto/botão
-    overlay.classList.add("hidden");
-    
-    // 2. ACIONA O FADE-OUT: Escurece a tela
-    fadeTransition.classList.add("active");
-    videoPlaying = true;
-    
-    // 3. Espera a transição de escurecimento terminar (1.5 segundos)
-    setTimeout(() => {
-        // Se a tela estiver escura, podemos iniciar o vídeo
-        cutsceneVideo.style.display = "block";
-        
-        cutsceneVideo.play().catch(error => {
-            // Em caso de falha de autoplay (comum em navegadores), exibe a transição de volta
-            console.error("Erro ao reproduzir o vídeo (provável bloqueio de autoplay):", error);
-            alert("Vitória! Redirecionando para a próxima fase...");
-            // Garante que a tela clareie e redirecione
-            finishCutsceneAndRedirect();
-        });
+    // 1. Oculta o overlay de texto/botão
+    overlay.classList.add("hidden");
+    
+    // 2. ACIONA O FADE-OUT: Escurece a tela
+    fadeTransition.classList.add("active");
+    videoPlaying = true;
+    
+    // 3. Espera a transição de escurecimento terminar (1.5 segundos)
+    setTimeout(() => {
+        // Se a tela estiver escura, podemos iniciar o vídeo
+        cutsceneVideo.style.display = "block";
+        
+        cutsceneVideo.play().catch(error => {
+            // Em caso de falha de autoplay (comum em navegadores), exibe a transição de volta
+            console.error("Erro ao reproduzir o vídeo (provável bloqueio de autoplay):", error);
+            alert("Vitória! Redirecionando para a próxima fase...");
+            // Garante que a tela clareie e redirecione
+            finishCutsceneAndRedirect();
+        });
 
-        // 4. ACIONA O FADE-IN: Clareia a tela sobre o vídeo
-        fadeTransition.classList.remove("active");
+        // 4. ACIONA O FADE-IN: Clareia a tela sobre o vídeo
+        fadeTransition.classList.remove("active");
 
-        // 5. Adiciona um Listener para o evento 'ended' (fim do vídeo)
-        cutsceneVideo.onended = finishCutsceneAndRedirect;
-        
-    }, FADE_DURATION); // Espera 1.5 segundos
+        // 5. Adiciona um Listener para o evento 'ended' (fim do vídeo)
+        cutsceneVideo.onended = finishCutsceneAndRedirect;
+        
+    }, FADE_DURATION); // Espera 1.5 segundos
 }
 
 function finishCutsceneAndRedirect() {
-    if (!fadeTransition) {
-        // Ação de vitória: Redireciona para tela2.html (como estava antes)
-        window.location.href = "tela2.html"; 
-        return;
-    }
+    if (!fadeTransition) {
+        // Ação de vitória: Redireciona para tela2.html (como estava antes)
+        window.location.href = "tela2.html"; 
+        return;
+    }
 
-    // 1. ACIONA O FADE-OUT NOVAMENTE para escurecer antes de redirecionar
-    fadeTransition.classList.add("active");
+    // 1. ACIONA O FADE-OUT NOVAMENTE para escurecer antes de redirecionar
+    fadeTransition.classList.add("active");
 
-    // 2. Espera o fade-out (1.5 segundos) e então redireciona
-    setTimeout(() => {
-        cutsceneVideo.style.display = "none";
-        videoPlaying = false;
-        // 3. Redireciona para a próxima fase
-        // ************************************************
-        // ALTERAÇÃO PARA TELA3.HTML APÓS VENCER O JOGO
-        // ************************************************
-        window.location.href = "tela3.html"; 
-    }, FADE_DURATION);
+    // 2. Espera o fade-out (1.5 segundos) e então redireciona
+    setTimeout(() => {
+        cutsceneVideo.style.display = "none";
+        videoPlaying = false;
+        // 3. Redireciona para a próxima fase
+        // ************************************************
+        // ALTERAÇÃO PARA TELA3.HTML APÓS VENCER O JOGO
+        // ************************************************
+        window.location.href = "tela3.html"; 
+    }, FADE_DURATION);
 }
 
 
 // === Ação do botão é determinada pelo estado do jogo ===
 restartBtn.addEventListener("click", () => {
-    if (restartBtn.textContent === "Continuar" && gameOver) {
-        playCutscene();
-    } else {
-        resetGame();
-    }
+    if (restartBtn.textContent === "Continuar" && gameOver) {
+        playCutscene();
+    } else {
+        resetGame();
+    }
 });
 // ===================================================================
 
 function startGame() {
-    document.getElementById("timer").textContent = `⏱ ${timeLeft}`;
-    document.getElementById("score").textContent = `📦 ${score}/${GAME.boxCount}`;
-    timerInterval = setInterval(() => {
-        // Não atualiza o tempo se o jogo acabou ou se o vídeo está rodando
-        if (!gameOver && !videoPlaying) { 
-            timeLeft--;
-            document.getElementById("timer").textContent = `⏱ ${timeLeft}`;
-            if (timeLeft <= 0) endGame(false);
-        }
-    }, 1000);
-    requestAnimationFrame(update);
+    document.getElementById("timer").textContent = `⏱ ${timeLeft}`;
+    document.getElementById("score").textContent = `📦 ${score}/${GAME.boxCount}`;
+    timerInterval = setInterval(() => {
+        // Não atualiza o tempo se o jogo acabou ou se o vídeo está rodando
+        if (!gameOver && !videoPlaying) { 
+            timeLeft--;
+            document.getElementById("timer").textContent = `⏱ ${timeLeft}`;
+            if (timeLeft <= 0) endGame(false);
+        }
+    }, 1000);
+    requestAnimationFrame(update);
 }
 
 function update() {
-    // Se o jogo acabou ou o vídeo está tocando, paramos de desenhar o jogo normal
-    if (gameOver || videoPlaying) { 
-        return; 
-    }
-    
-    ctx.clearRect(0, 0, GAME.width, GAME.height);
-    ctx.drawImage(images.bg, 0, 0, GAME.width, GAME.height);
-    ctx.drawImage(images.truck, truck.x, truck.y, truck.width, truck.height);
-    
-    handleMovement();
-    
-    // NOVO: Lógica do ladrão
-    handleRobber(); 
+    // Se o jogo acabou ou o vídeo está tocando, paramos de desenhar o jogo normal
+    if (gameOver || videoPlaying) { 
+        return; 
+    }
+    
+    ctx.clearRect(0, 0, GAME.width, GAME.height);
+    ctx.drawImage(images.bg, 0, 0, GAME.width, GAME.height);
+    ctx.drawImage(images.truck, truck.x, truck.y, truck.width, truck.height);
+    
+    handleMovement();
+    
+    // NOVO: Lógica do ladrão
+    handleRobber(); 
 
-    boxes.forEach((b) => {
-        // >>> ATUALIZADO: Desenho da caixa usa BOX_WIDTH e BOX_HEIGHT
-        if (!b.collected) ctx.drawImage(images.box, b.x, b.y, BOX_WIDTH, BOX_HEIGHT);
-    });
-    
-    updatePlayerAnimation();
-    drawPlayer();
+    boxes.forEach((b) => {
+        // >>> ATUALIZADO: Desenho da caixa usa BOX_WIDTH e BOX_HEIGHT
+        if (!b.collected) ctx.drawImage(images.box, b.x, b.y, BOX_WIDTH, BOX_HEIGHT);
+    });
+    
+    updatePlayerAnimation();
+    drawPlayer();
 
-    // NOVO: Desenha o ladrão (e atualiza sua animação)
-    if (robber.active) {
-        updateRobberAnimation();
-        drawRobber();
-    }
-    
-    requestAnimationFrame(update);
+    // NOVO: Desenha o ladrão (e atualiza sua animação)
+    if (robber.active) {
+        updateRobberAnimation();
+        drawRobber();
+    }
+    
+    requestAnimationFrame(update);
 }
 
 
 // NOVO: Função para o loop de IA/Movimento do Ladrão
 function handleRobber() {
-    // 1. Contador de Tempo para Iniciar a Rotina de Roubo
-    if (!robber.active) {
-        robberTimer++;
-        
-        // Verifica o intervalo.
-        if (robberTimer >= FRAME_RATE * ROBBER_INTERVAL_SECONDS) {
-            robberTimer = 0;
-            
-            // Tenta selecionar uma caixa aleatória não coletada para roubar
-            const availableBoxes = boxes.filter(b => !b.collected);
-            if (availableBoxes.length > 0) {
-                // Seleciona a primeira caixa disponível (pode ser aleatório)
-                robber.targetBox = availableBoxes[0]; 
-                robber.active = true;
-                robber.state = "walk";
-                robber.direction = "right"; // Entrando
-                robber.x = -150; // Reseta a posição inicial (fora da tela)
-                robber.hasBox = false;
-                robber.frame = 0;
-            }
-        }
-        return;
-    }
-    
-    // O ladrão está ativo - Executa a rotina
-    
-    // Estágio 1: Mover para o alvo (targetBox)
-    if (robber.targetBox && !robber.hasBox) {
-        // Para simplificar, o alvo é apenas a posição X da caixa
-        const targetX = robber.targetBox.x; 
-        
-        // Move horizontalmente (semelhante ao jogador)
-        if (robber.x < targetX) {
-            robber.x += robber.speed;
-        } else if (robber.x > targetX) {
-            robber.x -= robber.speed;
-        }
-        
-        // Se chegou perto da caixa (dentro de uma margem de colisão)
-        if (Math.abs(robber.x - targetX) < 10) {
-            
-            // Se o jogador não a pegou antes
-            if (!robber.targetBox.collected) {
-                robber.targetBox.collected = true; // Caixa roubada!
-                robber.hasBox = true;
-                robber.state = "idleBox"; // Ladrão pega a caixa
-                robber.direction = "left"; // Vira para fugir
-                robber.frame = 0;
-            } else {
-                // A caixa foi pega pelo jogador antes que o ladrão chegasse
-                robber.active = false; // Cancela a rotina do ladrão
-                robber.targetBox = null;
-                robber.x = -150; // Teleporta de volta para fora da tela
-            }
-        }
-    } 
-    // Estágio 2: Fuga (Voltar para a esquerda)
-    else if (robber.hasBox) {
-        robber.state = "walkBox"; // Estado de fuga (andando com caixa)
-        robber.x -= robber.speed;
-        
-        // Se saiu da tela
-        if (robber.x < -150) {
-            robber.active = false;
-            robber.targetBox = null;
-            robber.hasBox = false;
-        }
-    }
+    
+    // NOVO: Lógica do Estado STUN (Atordoado, Pisca e Some)
+    if (robber.state === "stun") {
+        robber.stunTimer--;
+        
+        // Pisca 3 vezes (Alterna a visibilidade)
+        // Usa o frame para alternar a visibilidade (par=visível, ímpar=invisível)
+        if (robber.stunTimer > 0 && robber.stunTimer % BLINK_INTERVAL_FRAMES === 0) {
+            robber.frame = (robber.frame + 1) % 2; 
+        }
+        
+        // Fim do atordoamento - O ladrão some
+        if (robber.stunTimer <= 0) {
+            robber.active = false;
+            robber.state = "idle";
+            robber.x = -150; 
+            // Garante que o ladrão está invisível ao sumir
+            robber.frame = 0; 
+        }
+        
+        return; // Retorna para que o ladrão não se mova enquanto atordoado
+    }
+    
+    // 1. Contador de Tempo para Iniciar a Rotina de Roubo
+    if (!robber.active) {
+        robberTimer++;
+        
+        // Verifica o intervalo.
+        if (robberTimer >= FRAME_RATE * ROBBER_INTERVAL_SECONDS) {
+            robberTimer = 0;
+            
+            // Tenta selecionar uma caixa aleatória não coletada para roubar
+            const availableBoxes = boxes.filter(b => !b.collected);
+            if (availableBoxes.length > 0) {
+                // Seleciona a primeira caixa disponível (pode ser aleatório)
+                robber.targetBox = availableBoxes[0]; 
+                robber.active = true;
+                robber.state = "walk";
+                robber.direction = "right"; // Entrando
+                robber.x = -150; // Reseta a posição inicial (fora da tela)
+                robber.hasBox = false;
+                robber.frame = 0;
+            }
+        }
+        return;
+    }
+    
+    // O ladrão está ativo - Executa a rotina
+    
+    // Estágio 1: Mover para o alvo (targetBox)
+    if (robber.targetBox && !robber.hasBox) {
+        // Para simplificar, o alvo é apenas a posição X da caixa
+        const targetX = robber.targetBox.x; 
+        
+        // Move horizontalmente (semelhante ao jogador)
+        if (robber.x < targetX) {
+            robber.x += robber.speed;
+        } else if (robber.x > targetX) {
+            robber.x -= robber.speed;
+        }
+        
+        // Se chegou perto da caixa (dentro de uma margem de colisão)
+        if (Math.abs(robber.x - targetX) < 10) {
+            
+            // Se o jogador não a pegou antes
+            if (!robber.targetBox.collected) {
+                robber.targetBox.collected = true; // Caixa roubada!
+                robber.hasBox = true;
+                robber.state = "idleBox"; // Ladrão pega a caixa
+                robber.direction = "left"; // Vira para fugir
+                robber.frame = 0;
+            } else {
+                // A caixa foi pega pelo jogador antes que o ladrão chegasse
+                robber.active = false; // Cancela a rotina do ladrão
+                robber.targetBox = null;
+                robber.x = -150; // Teleporta de volta para fora da tela
+            }  
+        }
+    } 
+    // Estágio 2: Fuga (Voltar para a esquerda)
+    else if (robber.hasBox) {
+        // O ladrão tem a caixa, agora o estado é 'walkBox' para usar o sprite de fuga com caixa
+        robber.state = "walkBox"; 
+        robber.x -= robber.speed;
+        
+        // Se saiu da tela
+        if (robber.x < -150) {
+            robber.active = false;
+            robber.targetBox = null;
+            robber.hasBox = false;
+        }
+    }
 }
 
 
-// === Movimento e Coleta (Caixa some imediatamente) ===
+// === Movimento, Coleta e Soco ===
 function handleMovement() {
-    // Bloqueia movimento se ocupado, jogo acabou ou vídeo rodando
-    if (player.busy || gameOver || videoPlaying) return;
-    
-    let moving = false;
-    const prevState = player.state;
+    // Bloqueia movimento se ocupado, jogo acabou ou vídeo rodando
+    if (player.busy || gameOver || videoPlaying) return;
+    
+    let moving = false;
+    const prevState = player.state;
 
-    if (keys["ArrowLeft"] || keys["a"]) {
-        player.x -= player.speed;
-        player.direction = "left";
-        moving = true;
-    }
-    if (keys["ArrowRight"] || keys["d"]) {
-        player.x += player.speed;
-        player.direction = "right";
-        moving = true;
-    }
-    if (keys["ArrowUp"] || keys["w"]) {
-        player.y -= player.speed;
-        moving = true;
-    }
-    if (keys["ArrowDown"] || keys["s"]) {
-        player.y += player.speed;
-        moving = true;
-    }
+    if (keys["ArrowLeft"] || keys["a"]) {
+        player.x -= player.speed;
+        player.direction = "left";
+        moving = true;
+    }
+    if (keys["ArrowRight"] || keys["d"]) {
+        player.x += player.speed;
+        player.direction = "right";
+        moving = true;
+    }
+    if (keys["ArrowUp"] || keys["w"]) {
+        player.y -= player.speed;
+        moving = true;
+    }
+    if (keys["ArrowDown"] || keys["s"]) {
+        player.y += player.speed;
+        moving = true;
+    }
 
-    // Limites da tela/mapa
-    player.x = Math.max(0, Math.min(GAME.width - player.width, player.x));
-    player.y = Math.max(150, Math.min(GAME.height - player.height, player.y));
+    // Limites da tela/mapa
+    player.x = Math.max(0, Math.min(GAME.width - player.width, player.x));
+    player.y = Math.max(150, Math.min(GAME.height - player.height, player.y));
 
-    if (moving) player.state = "walk";
-    else player.state = "idle";
+    if (moving) player.state = "walk";
+    else player.state = "idle";
 
-    if (prevState !== player.state) {
-        player.frame = 0;
-        player.frameCounter = 0;
-    }
+    if (prevState !== player.state) {
+        player.frame = 0;
+        player.frameCounter = 0;
+    }
 
-    // SPACE to pick box
-    if ((keys[" "] || keys["Spacebar"]) && !player.hasBox && !player.busy) {
-        // >>> ATUALIZADO: Colisão da caixa usa BOX_WIDTH e BOX_HEIGHT
-        const b = boxes.find((box) => !box.collected && collide(player, box, BOX_WIDTH, BOX_HEIGHT));
-        if (b) {
-            player.state = "pick";
-            player.frame = 0;
-            player.frameCounter = 0;
-            player.busy = true;
-            player._pickingBox = b;
-            
-            // A caixa é marcada como coletada AQUI, para sumir imediatamente
-            b.collected = true; 
-        }
-    }
-    
+    // SPACE to pick box
+    if ((keys[" "] || keys["Spacebar"]) && !player.hasBox && !player.busy) {
+        // >>> ATUALIZADO: Colisão da caixa usa BOX_WIDTH e BOX_HEIGHT
+        const b = boxes.find((box) => !box.collected && collide(player, box, BOX_WIDTH, BOX_HEIGHT));
+        if (b) {
+            player.state = "pick";
+            player.frame = 0;
+            player.frameCounter = 0;
+            player.busy = true;
+            player._pickingBox = b;
+            
+            // A caixa é marcada como coletada AQUI, para sumir imediatamente
+            b.collected = true; 
+        }
+    }
+    
+    // NOVO: Adiciona Soco com a tecla B
+    if (keys["B"] && !player.busy) {
+        player.state = "punch";
+        player.frame = 0;
+        player.frameCounter = 0;
+        player.busy = true;
 
-    if (player.hasBox) checkTruckDelivery();
+        // Limpa o estado da tecla para não disparar a cada frame
+        keys["B"] = false; 
+    }
+
+    if (player.hasBox) checkTruckDelivery();
 }
 
 function collide(entity, box, bw, bh) {
-    return (
-        entity.x + entity.width > box.x &&
-        entity.x < box.x + bw &&
-        entity.y + entity.height > box.y &&
-        entity.y < box.y + bh
-    );
+    return (
+        entity.x + entity.width > box.x &&
+        entity.x < box.x + bw &&
+        entity.y + entity.height > box.y &&
+        entity.y < box.y + bh
+    );
 }
+
+// NOVO: Função para verificar se o soco atingiu o ladrão
+function checkRobberHit() {
+    // Verifica se o ladrão está ativo, tem a caixa, e não está atordoado
+    if (!robber.active || !robber.hasBox || robber.state === "stun") return; 
+
+    // A. Define a área de colisão do Soco 
+    // Ajuste as coordenadas do soco conforme seu sprite/largura visual de 'punch' (180)
+    const PUNCH_WIDTH = 100;
+    const punchZone = {
+        // Posição: Centro do jogador (player.x + player.width/2) 
+        // deslocado pela metade da largura do soco e ajustado pela direção
+        x: player.direction === "right" 
+            ? player.x + player.width / 2 - PUNCH_WIDTH / 2 + 50 // Soco para a direita
+            : player.x + player.width / 2 - PUNCH_WIDTH / 2 - 50, // Soco para a esquerda
+        y: player.y,
+        width: PUNCH_WIDTH, // Largura da zona de soco
+        height: player.height // Altura total
+    };
+
+    // B. Usa a colisão
+    // Nota: O ladrão (robber) usa sua largura/altura de COLISÃO (120/170)
+    if (collide(punchZone, robber, robber.width, robber.height)) { 
+        
+        // 1. Ladrão Solta a Caixa
+        if (robber.targetBox) {
+            // Re-ativa a caixa na posição onde o ladrão foi atingido
+            robber.targetBox.collected = false; 
+            // Posiciona a caixa um pouco atrás do ladrão (ajustado para a direção)
+            robber.targetBox.x = robber.x + (robber.direction === "right" ? robber.width : -BOX_WIDTH); 
+            robber.targetBox.y = robber.y + robber.height - BOX_HEIGHT; 
+        }
+
+        // 2. Inicia o Estado de Piscar e Sumir
+        robber.hasBox = false;
+        robber.targetBox = null;
+        robber.state = "stun"; // Novo estado de atordoamento
+        robber.stunTimer = STUN_DURATION_FRAMES; // Começa o cronômetro
+        robber.frame = 0; // Usado para contagem do piscar
+    }
+}
+
 
 // === Colisão restrita à lateral esquerda da caminhonete ===
 function checkTruckDelivery() {
-    // 1. Define a área de colisão da "caçamba esquerda"
-    // Valores ajustados para a área lateral esquerda da caminhonete
-    const DELIVERY_ZONE = {
-        // Começa onde a caminhonete começa + um pequeno offset
-        x: truck.x + 50, 
-        // A largura da área de entrega (por exemplo, 20% da largura total do caminhão)
-        width: truck.width * 0.20, 
-        // Altura vertical da caçamba
-        y: truck.y + 100,
-        height: truck.height * 0.40, 
-    };
+    // 1. Define a área de colisão da "caçamba esquerda"
+    // Valores ajustados para a área lateral esquerda da caminhonete
+    const DELIVERY_ZONE = {
+        // Começa onde a caminhonete começa + um pequeno offset
+        x: truck.x + 50, 
+        // A largura da área de entrega (por exemplo, 20% da largura total do caminhão)
+        width: truck.width * 0.20, 
+        // Altura vertical da caçamba
+        y: truck.y + 100,
+        height: truck.height * 0.40, 
+    };
 
-    // 2. Verifica a colisão com essa nova área
-    if (collide(player, DELIVERY_ZONE, DELIVERY_ZONE.width, DELIVERY_ZONE.height)) {
-        score++;
-        document.getElementById("score").textContent = `📦 ${score}/${GAME.boxCount}`;
-        player.hasBox = false;
-        if (score >= GAME.boxCount) endGame(true);
-    }
+    // 2. Verifica a colisão com essa nova área
+    if (collide(player, DELIVERY_ZONE, DELIVERY_ZONE.width, DELIVERY_ZONE.height)) {
+        score++;
+        document.getElementById("score").textContent = `📦 ${score}/${GAME.boxCount}`;
+        player.hasBox = false;
+        if (score >= GAME.boxCount) endGame(true);
+    }
 }
 // ====================================================================
 
-// === Animação (Inverte a ordem dos frames de 'walk' e 'walkBox') ===
+// === Animação (Inverte a ordem dos frames de 'walk' e 'walkBox' e adiciona 'punch') ===
 function updatePlayerAnimation() {
-    const key = getSpriteKey(player);
-    const frames = frameCounts[key] || 1;
-    player.frameCounter++;
-    
-    if (player.frameCounter >= player.frameDelay) {
-        player.frameCounter = 0;
+    const key = getSpriteKey(player);
+    const frames = frameCounts[key] || 1;
+    player.frameCounter++;
+    
+    if (player.frameCounter >= player.frameDelay) {
+        player.frameCounter = 0;
 
-        // Se for animação de andar, inverte a direção
-        if (key === "walk" || key === "walkBox") {
-            // (player.frame - 1 + frames) % frames garante que o módulo funcione corretamente para números negativos
-            player.frame = (player.frame - 1 + frames) % frames;
-        } else {
-            // Para as demais animações, mantém a ordem normal (crescente)
-            player.frame = (player.frame + 1) % frames;
-            
-            if (player.state === "pick" && player.frame === frames - 1) {
-                finishPick();
-            }
-        }
-    }
+        // Se for animação de andar, inverte a direção
+        if (key === "walk" || key === "walkBox") {
+            // (player.frame - 1 + frames) % frames garante que o módulo funcione corretamente para números negativos
+            player.frame = (player.frame - 1 + frames) % frames;
+        } else {
+            // Para as demais animações, mantém a ordem normal (crescente)
+            player.frame = (player.frame + 1) % frames;
+            
+            if (player.state === "pick" && player.frame === frames - 1) {
+                finishPick();
+            }
+            
+            // NOVO: Lógica do Soco
+            if (player.state === "punch") {
+                // Supondo que o frame de contato seja o frame 2 de 4 frames
+                if (player.frame === 2) { 
+                    checkRobberHit(); // Checa colisão no frame de impacto
+                }
+                
+                // Se o soco terminou, volta ao estado idle e libera o busy
+                if (player.frame === frames - 1) { 
+                    player.busy = false;
+                    player.state = "idle";
+                    player.frame = 0;
+                    player.frameCounter = 0;
+                }
+            }
+        }
+    }
 }
 
 // NOVO: Lógica de Animação do Ladrão
 function updateRobberAnimation() {
-    // O ladrão usa a mesma lógica de frames, mas com o objeto 'robber'
-    const key = getSpriteKey(robber);
-    const frames = frameCounts[key] || 1; 
-    robber.frameCounter++;
-    
-    if (robber.frameCounter >= robber.frameDelay) {
-        robber.frameCounter = 0;
+    // Se estiver atordoado (stun), a lógica é controlada por handleRobber
+    if (robber.state === "stun") return; 
+    
+    // O ladrão usa a mesma lógica de frames, mas com o objeto 'robber'
+    const key = getSpriteKey(robber);
+    const frames = frameCounts[key] || 1; 
+    robber.frameCounter++;
+    
+    if (robber.frameCounter >= robber.frameDelay) {
+        robber.frameCounter = 0;
 
-        // Se for animação de andar
-        if (key === "walk" || key === "walkBox") {
-            robber.frame = (robber.frame - 1 + frames) % frames; 
-        } else {
-            robber.frame = (robber.frame + 1) % frames;
-        }
-    }
+        // Se for animação de andar (walk/walkBox/robberWalk/robberWalkBox)
+        if (key === "walk" || key === "walkBox" || key === "robberWalk" || key === "robberWalkBox") {
+            robber.frame = (robber.frame - 1 + frames) % frames; 
+        } else {
+            robber.frame = (robber.frame + 1) % frames;
+        }
+    }
 }
 
 
 function finishPick() {
-    if (player._pickingBox) {
-        player.hasBox = true;
-        delete player._pickingBox;
-    }
-    player.busy = false;
-    player.state = "idle";
-    player.frame = 0;
-    player.frameCounter = 0;
-    document.getElementById("score").textContent = `📦 ${score}/${GAME.boxCount}`;
+    if (player._pickingBox) {
+        player.hasBox = true;
+        delete player._pickingBox;
+    }
+    player.busy = false;
+    player.state = "idle";
+    player.frame = 0;
+    player.frameCounter = 0;
+    document.getElementById("score").textContent = `📦 ${score}/${GAME.boxCount}`;
 }
 
 // Função utilitária para pegar a chave do sprite, serve para player e robber
 function getSpriteKey(entity) {
-    // Nota: A verificação de entity.gameOver só deve ser feita se a entidade for o player (que é o que está sendo verificado na função endGame original)
-    if (entity === player && gameOver) return entity.hasBox ? "lostBox" : "lost"; 
-    switch (entity.state) {
-        case "walk":
-        case "walkBox": // Ladrão pode ter walkbox no estado de fuga
-            return entity.hasBox ? "walkBox" : "walk";
-        case "pick":
-            return "pick";
-        default:
-            return entity.hasBox ? "idleBox" : "idle";
-    }
+    // Nota: A verificação de entity.gameOver só deve ser feita se a entidade for o player
+    if (entity === player && gameOver) return entity.hasBox ? "lostBox" : "lost"; 
+    
+    // NOVO: Adiciona a chave 'punch' e o ladrão 'stun'
+    if (entity.state === "punch") return "punch";
+    if (entity.state === "stun") return entity.hasBox ? "idleBox" : "idle"; // Usa o sprite idle para simular o atordoamento
+    
+    // 4. ALTERAÇÃO AQUI: Lógica para o Ladrão usar sprites específicos
+    if (entity === robber) {
+        if (entity.state === "walk") {
+            // Ladrão caminhando sem caixa (indo para o alvo)
+            return "robberWalk"; 
+        }
+        if (entity.state === "walkBox") {
+            // Ladrão caminhando COM caixa (fugindo)
+            return "robberWalkBox"; 
+        }
+    }
+    // Fim da lógica específica do Ladrão. O restante se aplica ao player
+    
+    switch (entity.state) {
+        case "walk":
+        case "walkBox": 
+            return entity.hasBox ? "walkBox" : "walk";
+        case "pick":
+            return "pick";
+        default:
+            return entity.hasBox ? "idleBox" : "idle";
+    }
 }
 
 // === Desenho e Correção de Alinhamento do Player ===
 function drawPlayer() {
-    drawEntity(player);
+    drawEntity(player);
 }
 
 // NOVO: Função para desenhar o Ladrão (chama a mesma função utilitária)
 function drawRobber() {
-    drawEntity(robber);
+    drawEntity(robber);
 }
 
 // Função utilitária para desenhar o Player/Robber
 function drawEntity(entity) {
-    const key = getSpriteKey(entity);
-    const sprite = images[key];
-    const frames = frameCounts[key] || 1;
-    const frameWidth = sprite.width / frames;
+    const key = getSpriteKey(entity);
+    const sprite = images[key];
+    
+    // Se o sprite não foi carregado (ex: punch), não desenha
+    if (!sprite) {
+        // console.warn(`Sprite not found for key: ${key}`);
+        return;
+    }
+    
+    const frames = frameCounts[key] || 1;
+    const frameWidth = sprite.width / frames;
 
-    // Coordenadas fixas e inteiras
-    const displayX = Math.floor(entity.x);
-    const displayY = Math.floor(entity.y);
+    // NOVO: Lógica de Piscar para o Ladrão Atordoado
+    if (entity === robber && entity.state === "stun") {
+        // Se frame === 1 (ímpar), não desenha, simulando um piscar invisível.
+        if (entity.frame === 1) return; 
+    }
 
-    // *****************************************************************
-    // CORREÇÃO: Usa a constante DRAW_WIDTHS para obter a largura de desenho
-    
-    // 1. Obtém a largura de desenho (Visual) baseada no estado atual
-    // Se o estado não estiver em DRAW_WIDTHS (ex: um estado temporário), usa a largura de colisão padrão (120)
-    let drawWidth = DRAW_WIDTHS[key] || entity.width; 
+    // Coordenadas fixas e inteiras
+    const displayX = Math.floor(entity.x);
+    const displayY = Math.floor(entity.y);
 
-    const drawHeight = entity.height; 
-    
-    // 2. Calcula a diferença de largura para manter o centro do personagem fixo
-    // Usa a largura de COLISÃO (entity.width = 120) como referência central
-    const widthAdjustment = (entity.width - drawWidth) / 2;
-    // *****************************************************************
+    // *****************************************************************
+    // CORREÇÃO: Usa a constante DRAW_WIDTHS para obter a largura de desenho
+    
+    // 1. Obtém a largura de desenho (Visual) baseada no estado atual
+    // Se o estado não estiver em DRAW_WIDTHS (ex: um estado temporário), usa a largura de colisão padrão (120)
+    let drawWidth = DRAW_WIDTHS[key] || entity.width; 
 
-    const cx = displayX + entity.width / 2;
-    const cy = displayY + entity.height / 2;
+    const drawHeight = entity.height; 
+    
+    // 2. Calcula a diferença de largura para manter o centro do personagem fixo
+    // Usa a largura de COLISÃO (entity.width = 120) como referência central
+    const widthAdjustment = (entity.width - drawWidth) / 2;
+    // *****************************************************************
 
-    // Ajusta o dx com base na nova largura para manter a centralização
-    const dx = Math.floor(-drawWidth / 2) + widthAdjustment; 
-    const dy = Math.floor(-drawHeight / 2);
+    const cx = displayX + entity.width / 2;
+    const cy = displayY + entity.height / 2;
 
-    // Offset para corrigir sprites idle desalinhados (mantido)
-    const offsetY = key === "idle" || key === "idleBox" ? -4 : 0;
+    // Ajusta o dx com base na nova largura para manter a centralização
+    const dx = Math.floor(-drawWidth / 2) + widthAdjustment; 
+    const dy = Math.floor(-drawHeight / 2);
 
-    ctx.save();
-    ctx.translate(cx, cy);
+    // Offset para corrigir sprites idle desalinhados (mantido)
+    const offsetY = key === "idle" || key === "idleBox" ? -4 : 0;
 
-    const facingRight = entity.direction === "right";
-    // Flip horizontal corrigido
-    if (facingRight) ctx.scale(-1, 1); 
+    ctx.save();
+    ctx.translate(cx, cy);
 
-    ctx.drawImage(
-        sprite,
-        frameWidth * entity.frame,
-        0,
-        frameWidth,
-        sprite.height,
-        dx, // Usando o dx ajustado
-        dy + offsetY,
-        drawWidth, // Usando a largura dinâmica
-        drawHeight // Usando a altura padrão
-    );
+    const facingRight = entity.direction === "right";
+    // Flip horizontal corrigido
+    if (facingRight) ctx.scale(-1, 1); 
 
-    ctx.restore();
+    ctx.drawImage(
+        sprite,
+        frameWidth * entity.frame,
+        0,
+        frameWidth,
+        sprite.height,
+        dx, // Usando o dx ajustado
+        dy + offsetY,
+        drawWidth, // Usando a largura dinâmica
+        drawHeight // Usando a altura padrão
+    );
+
+    ctx.restore();
 }
 // =======================================================
 
 // === Lógica de Fim de Jogo e Reset ===
 function endGame(win) {
-    clearInterval(timerInterval);
-    gameOver = true;
-    player.state = "lost";
-    // O `requestAnimationFrame` será interrompido na próxima chamada de `update`
-    // Mas precisamos rodar o loop pelo menos mais uma vez para animar o "lost"
-    requestAnimationFrame(update);
+    clearInterval(timerInterval);
+    gameOver = true;
+    player.state = "lost";
+    // O `requestAnimationFrame` será interrompido na próxima chamada de `update`
+    // Mas precisamos rodar o loop pelo menos mais uma vez para animar o "lost"
+    requestAnimationFrame(update);
 
-    if (win) {
-        overlayMessage.textContent = "🎉 Você venceu! Próxima Fase!";
-        restartBtn.textContent = "Continuar"; 
-    } else {
-        overlayMessage.textContent = "⏰ Tempo esgotado!";
-        restartBtn.textContent = "Reiniciar"; 
-    }
+    if (win) {
+        overlayMessage.textContent = "🎉 Você venceu! Próxima Fase!";
+        restartBtn.textContent = "Continuar"; 
+    } else {
+        overlayMessage.textContent = "⏰ Tempo esgotado!";
+        restartBtn.textContent = "Reiniciar"; 
+    }
 
-    overlay.classList.remove("hidden");
+    overlay.classList.remove("hidden");
 }
 
 function resetGame() {
-    overlay.classList.add("hidden");
-    restartBtn.textContent = "Reiniciar"; 
-    
-    // Reinicia o estado do vídeo e remove a máscara de fade
-    if (cutsceneVideo) {
-        cutsceneVideo.style.display = "none";
-        cutsceneVideo.pause();
-        cutsceneVideo.currentTime = 0;
-    }
-    if (fadeTransition) {
-        fadeTransition.classList.remove("active");
-    }
-    
-    videoPlaying = false;
-    
-    timeLeft = GAME.timeLimit;
-    score = 0;
-    gameOver = false;
-    boxes = Array.from({ length: GAME.boxCount }, (_, i) => ({
-        x: 120 + (i % 3) * 260,
-        y: 540 + Math.floor(i / 3) * 30,
-        collected: false,
-    }));
-    player.x = 100;
-    player.y = 550;
-    player.hasBox = false;
-    player.state = "idle";
-    player.busy = false;
-    player.frame = 0;
+    overlay.classList.add("hidden");
+    restartBtn.textContent = "Reiniciar"; 
+    
+    // Reinicia o estado do vídeo e remove a máscara de fade
+    if (cutsceneVideo) {
+        cutsceneVideo.style.display = "none";
+        cutsceneVideo.pause();
+        cutsceneVideo.currentTime = 0;
+    }
+    if (fadeTransition) {
+        fadeTransition.classList.remove("active");
+    }
+    
+    videoPlaying = false;
+    
+    timeLeft = GAME.timeLimit;
+    score = 0;
+    gameOver = false;
+    boxes = Array.from({ length: GAME.boxCount }, (_, i) => ({
+        x: 120 + (i % 3) * 260,
+        y: 540 + Math.floor(i / 3) * 30,
+        collected: false,
+    }));
+    player.x = 100;
+    player.y = 550;
+    player.hasBox = false;
+    player.state = "idle";
+    player.busy = false;
+    player.frame = 0;
 
-    // NOVO: Reseta o estado do ladrão
-    robber.active = false;
-    robber.x = -150;
-    robber.targetBox = null;
-    robber.hasBox = false;
-    robberTimer = 0;
-    
-    document.getElementById("score").textContent = `📦 ${score}/${GAME.boxCount}`;
-    startGame();
+    // NOVO: Reseta o estado do ladrão
+    robber.active = false;
+    robber.x = -150;
+    robber.targetBox = null;
+    robber.hasBox = false;
+    robberTimer = 0;
+    robber.state = "idle";
+    robber.stunTimer = 0;
+    
+    document.getElementById("score").textContent = `📦 ${score}/${GAME.boxCount}`;
+    startGame();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Isso garante que o jogo comece se todos os assets já tiverem sido carregados
-    if (loaded === totalAssets) {
-        startGame();
-    }
+    // Isso garante que o jogo comece se todos os assets já tiverem sido carregados
+    if (loaded === totalAssets) {
+        startGame();
+    }
 });
