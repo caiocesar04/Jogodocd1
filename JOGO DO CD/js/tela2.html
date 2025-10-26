@@ -1,0 +1,95 @@
+<!DOCTYPE HTML>
+<html lang = "eng">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="./script2.js" defer></script> 
+    <title>Jogo do CD</title>
+
+    <style>
+        /* ... Seu CSS de fundo existente ... */
+        #jogo-do-cd-board {
+            background-image: url('../assets/estrada.png'); 
+            background-repeat: repeat-y; 
+            background-attachment: fixed; 
+            background-size: 100% auto; 
+            background-position-y: 0px; 
+        }
+
+        /* ⚠️ NOVO CSS: Estilização básica para o Overlay ⚠️ */
+        .game-over-overlay {
+            position: fixed; /* Fixa o overlay na tela */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8); /* Fundo preto semi-transparente */
+            display: flex; /* Centraliza o conteúdo */
+            justify-content: center;
+            align-items: center;
+            z-index: 100; /* Garante que fique acima de todos os outros elementos */
+            /* Inicialmente hidden. O JS fará display: flex quando necessário. */
+            display: none; 
+            color: white; /* Cor do texto */
+            text-align: center;
+        }
+
+        .message-box {
+            padding: 30px;
+            background-color: #333;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            max-width: 80%;
+        }
+
+        #overlayMessage {
+            font-size: 2em;
+            margin-bottom: 20px;
+            white-space: pre-line; /* Mantém as quebras de linha (\n) do JS */
+        }
+
+        #restartBtn {
+            background: #ff7b00;
+  color: #fff;
+  border: none;
+  padding: 12px 20px;
+  font-size: 20px;
+  border-radius: 8px;
+  cursor: pointer;
+        }
+
+        #restartBtn:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>     
+
+<body>
+
+    <div class="game-board" id="jogo-do-cd-board">
+    
+        <div id="timer-display">Tempo Restante: 01:00</div>
+
+        <img class="caminhonetecomcaixa" src="../assets/caminhonetecomcaixa.png" alt="caminhonetecomcaixa">
+        <img class="colisor" src="../assets/colisor.png" alt="colisor">
+        <img class="colisor2" src="../assets/colisor.png" alt="colisor2">
+        <img class="colisor3" src="../assets/colisor.png" alt="colisor3">
+        <img class="loja" src="../assets/loja.png" alt="loja">
+        <img class="carro1" src="../assets/carro1.png" alt="carro1">
+        <img class="carro2" src="../assets/carro2.png" alt="carro2">
+        <img class="carro3" src="../assets/carro3.png" alt="carro3"> 
+        <img class="carro4" src="../assets/carro4.png" alt="carro4 - Contramão">
+        <img class="carro5" src="../assets/carro5.png" alt="carro5 - Contramão">
+        <img class="carro6" src="../assets/carro6.png" alt="carro6 - Contramão">
+    </div>
+
+    <div class="game-over-overlay" id="gameOverOverlay">
+        <div class="message-box">
+            <p id="overlayMessage"></p>
+            <button id="restartBtn"></button>
+        </div>
+    </div>
+    </body>
+</html>

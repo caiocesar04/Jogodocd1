@@ -1,0 +1,289 @@
+/*
+ * ========================================
+ * 1. REGRAS GERAIS E RESET
+ * ========================================
+ */
+ * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #000;
+    font-family: Arial, sans-serif;
+}
+
+h1 {
+    font-family: 'Comic Sans MS', cursive; 
+    font-size: 2.5em; 
+    color: #333; 
+    text-align: center; 
+    margin-top: 20px; 
+}
+
+
+/*
+ * ========================================
+ * 2. GAME BOARD E CANVAS (Containers)
+ * ========================================
+ */
+.game-board { 
+    background: white; /* Cor de fallback */
+    width: 90%;
+    height: 800px;
+    border: 1px solid #333;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Estilos de elementos antigos (mantidos conforme solicitado) */
+#gameCanvas {
+    display: block;
+    margin: 0 auto;
+    background-color: #87ceeb;
+    border: 3px solid #333;
+}
+
+
+/*
+ * ========================================
+ * 3. HUD, CRONÔMETRO E OVERLAY
+ * ========================================
+ */
+#timer-display {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 5px 10px;
+    background-color: #333;
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 5px;
+    z-index: 50; 
+}
+
+/* HUD antigo (mantido) */
+#hud {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 20px;
+    color: #fff;
+    font-size: 24px;
+    text-shadow: 2px 2px 4px #000;
+}
+
+/* OVERLAY (Usado como base para .game-over-overlay no JS) */
+#overlay {
+    position: fixed; /* Usado 'fixed' para cobrir a tela inteira */
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    font-size: 36px;
+    z-index: 100; /* Z-index alto para cobrir tudo */
+}
+
+#overlay.hidden { display: none; }
+#overlayMessage { margin-bottom: 20px; }
+
+#restartBtn {
+    background: #ff7b00;
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    font-size: 20px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+#restartBtn:hover {
+    background-color: #45a049;
+}
+
+/* === NOVIDADE: Máscara de Transição para Cutscene (Fade) === */
+#fadeTransition { /* CORRIGIDO: Deve ser o ID que o JS busca */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: black;
+    opacity: 0; 
+    z-index: 150; /* Z-index alto para cobrir o vídeo e o canvas */
+    /* A duração deve corresponder ao FADE_DURATION no JS (1.5s) */
+    transition: opacity 1.5s ease-in-out; 
+    pointer-events: none; 
+}
+
+/* Estado ativo: Fica totalmente preto, escurecendo a tela */
+#fadeTransition.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+
+/*
+ * ========================================
+ * 4. SPRITES DE JOGO (Atual)
+ * ========================================
+ */
+
+/* === REGRAS GERAIS PARA TODOS OS SPRITES DE MOVIMENTO === */
+.caminhonetecomcaixa, .carro1, .carro2, .carro3, .carro4, .carro5, .carro6 {
+    position: absolute; 
+    width: 100px; 
+    height: auto;
+    transition: none; 
+    z-index: 10;
+}
+
+/* Centraliza a imagem no ponto "left" definido pelo JS */
+.caminhonetecomcaixa, .carro1, .carro2, .carro3 {
+    transform: translateX(-50%); 
+}
+
+/* Estilos Contramão (transforma e inverte) */
+.carro4, .carro5, .carro6 {
+    transform: translateX(-50%) scaleY(-1); 
+}
+
+/* Posições Iniciais (Placeholder) */
+.caminhonetecomcaixa {
+    bottom: 0; 
+    left: 50%; 
+    width: 90px;
+}
+.carro1 { 
+    bottom: 0; 
+    left: 75%; 
+    width: 80px; 
+}
+.carro2 { 
+    bottom: 0; 
+    left: 90%; 
+    width: 70px;
+}
+.carro3 { 
+    bottom: 0; 
+    left: 60%; 
+    width: 70px;
+}
+.carro4, .carro5, .carro6 {
+    width: 75px; 
+}
+
+/* ------------------------------------------------------------- */
+/* === ELEMENTO LOJA (AJUSTADO PARA A POSIÇÃO SUPERIOR DIREITA) === */
+.loja {
+    width: 150px; 
+    height: 150px; 
+    position: absolute; 
+    
+    /* POSIÇÃO HORIZONTAL: Canto direito */
+    left: 100%; 
+    transform: translateX(-100%); 
+    
+    /* POSIÇÃO VERTICAL INICIAL: Acima da tela (bottom alto = descendo) */
+    bottom: 850px; 
+    
+    /* Estado inicial: Oculto. O JS controlará 'visibility' e 'opacity'. */
+    visibility: hidden; 
+    opacity: 0;
+    transition: opacity 1s, transform 0.1s; /* Transição para fade-in */
+    
+    z-index: 5; /* Fica atrás dos carros, na camada do fundo */
+}
+/* ------------------------------------------------------------- */
+
+
+/*
+ * ========================================
+ * 5. COILSORES (Invisíveis)
+ * ========================================
+ */
+/* REGRAS GERAIS PARA COILSORES */
+.colisor, .colisor2, .colisor3 {
+    width: 130px; 
+    height: 800px; 
+    position: absolute; 
+    top: 0;
+    background-color: transparent; 
+    opacity: 0; 
+    z-index: 20; 
+}
+
+/* Colisor 1: Faixa Lateral Esquerda */
+.colisor {
+    left: 0; 
+}
+
+/* Colisor 2: Faixa Central (Canteiro) */
+.colisor2{
+    width: 140px; 
+    left: 49.6%; 
+    transform: translateX(-49.6%);
+}
+
+/* Colisor 3: Faixa Lateral Direita */
+.colisor3{
+    left: 100%; 
+    transform: translateX(-100%); 
+}
+
+
+/*
+ * ========================================
+ * 6. ELEMENTOS ANTIGOS (Mantidos conforme solicitado)
+ * ========================================
+ */
+.P1 {
+    width: 100px;
+    position: absolute; 
+    top: 50%; 
+    left: 50%;
+    transform: translate(-50%, -50%); 
+    transition: box-shadow 0.3s ease-in-out;
+}
+.P1:hover {
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.8), 
+                0 0 30px rgba(0, 4, 255, 0.5); 
+    cursor: pointer;
+}
+.caixa {
+    width: 100px;
+    position: absolute; 
+    padding: 10px; 
+    left: 20px;
+    bottom: 20px; 
+}
+.P2 {
+    width: 80px; 
+    height: auto;
+    position: absolute; 
+    top: 300px; 
+    left: 400px; 
+    transition: transform 0.1s linear; 
+}
+.caminhonete {
+    width: 800px;
+    position: absolute; 
+    top: 420px; 
+    right: -400px; 
+    padding: 10px; 
+}
+.modal-backdrop {
+    display: none; 
+}
