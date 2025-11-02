@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coleta de Caixas</title>
+    <link rel="stylesheet" href="../css/style.css" />
+    <style>
+        /* 1. Define o CONTAINER como PONTO DE REFERÊNCIA (position: relative).
+             2. Copia as regras de centralização do canvas (margin: 0 auto) para ele.
+             3. Define as dimensões do container (opcional, mas recomendado).
+        */
+        #gameContainer {
+            /* Copia o estilo de centralização do canvas do seu style.css */
+            display: block;
+            margin: 0 auto; 
+            /* Define o ponto de referência para o vídeo */
+            position: relative; 
+            /* Define o tamanho exato do seu canvas (1080x720) */
+            width: 1080px; 
+            height: 720px;
+        }
+
+        /* O canvas deve estar dentro do container */
+        #gameCanvas {
+            /* Remove o 'margin: 0 auto' do canvas, pois agora o container fará isso */
+            margin: 0; 
+        }
+
+        /* O VÍDEO agora se posiciona em relação ao #gameContainer 
+             e cobre ele completamente (a borda).
+        */
+        #cutsceneVideo {
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* Garante que o vídeo preencha 100% do container */
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            display: none; 
+            /* Z-index 10: Fica acima do Canvas (assumindo que o canvas tem z-index baixo/default) 
+               e abaixo do #overlay (100) e #fadeTransition (150) definido no CSS.
+            */
+            z-index: 10; 
+        }
+        
+    </style>
+</head>
+<body>
+    
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1080" height="720"></canvas>
+        <video id="cutsceneVideo" src="../assets/CUTSCENE1.mp4" preload="auto"></video>
+        
+        <div id="fadeTransition"></div>
+
+    </div>
+    
+    <div id="hud">
+        <span id="timer">⏱ 60</span>
+        <span id="score">📦 0/6</span>
+    </div>
+    
+    <div id="overlay" class="hidden">
+        <div id="overlayMessage"></div>
+        <button id="restartBtn">Reiniciar</button>
+    </div>
+    
+    <script src="script3.js"></script>
+</body>
+</html>
