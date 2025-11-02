@@ -1,6 +1,5 @@
 // ====================================================================
-// Jogo do CD - Script principal (script2.js) - Versão com Movimento Diagonal E LENTA RÉ
-// ATUALIZAÇÃO: Funcionalidade da Loja no Final do Cronômetro
+// Jogo do CD - Script principal (script2.js) 
 // ====================================================================
 
 // ============== 1. Variáveis Globais de Jogo (Movimento & Colisão) ==============
